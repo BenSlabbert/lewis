@@ -12,7 +12,11 @@ import (
 	"log"
 )
 
+var GitCommit string
+
 func main() {
+	log.Printf("Running server build commit: %s", GitCommit)
+
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 

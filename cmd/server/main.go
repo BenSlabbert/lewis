@@ -14,7 +14,11 @@ import (
 	"time"
 )
 
+var GitCommit string
+
 func main() {
+	log.Printf("Running server build commit: %s", GitCommit)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
