@@ -1,0 +1,42 @@
+syntax = "proto3";
+package protocol_pb;
+option go_package = "./;protocol_pb";
+
+service LewisService {
+  rpc Login(LoginRequest) returns (LoginResponse) {}
+  rpc Write(WriteRequest) returns (WriteResponse) {}
+  rpc Read(ReadRequest) returns (stream ReadResponse) {}
+}
+
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string token = 1;
+}
+
+message WriteRequest {
+  bytes value = 1;
+}
+
+message WriteResponse {
+  uint64 id = 1;
+}
+
+message ReadRequest {
+  oneof read_type {
+    // from specific id onward
+    uint64 from_id = 1;
+    // only new messages
+    bool latest = 2;
+    // from the first message
+    bool beginning = 3;
+  }
+}
+
+message ReadResponse {
+  uint64 id = 1;
+  bytes value = 2;
+}
