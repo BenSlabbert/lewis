@@ -1,6 +1,6 @@
 .PHONY: build fmt vet mod
 
-build: mod fmt vet proto-gen
+build: mod fmt vet proto-gen test
 	GOOS=linux go build -ldflags "-s -w" -o bin/cmd/client cmd/client/*.go
 	GOOS=linux go build -ldflags "-s -w" -o bin/cmd/server cmd/server/*.go
 
@@ -14,6 +14,9 @@ fmt:
 
 vet:
 	go vet ./...
+
+test:
+	go test ./...
 
 mod:
 	go mod tidy
