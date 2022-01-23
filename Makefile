@@ -12,7 +12,7 @@ upx:
 	upx -o bin/cmd/server.upx bin/cmd/server
 	upx -o bin/cmd/client.upx bin/cmd/client
 
-docker: build upx
+docker:
 	docker build --build-arg BIN_NAME=server -f docker/Dockerfile . -t lewis-server -t lewis-server:$(GIT_COMMIT_ID) -t lewis-server:$(GIT_BRANCH_NAME)
 	docker build --build-arg BIN_NAME=client -f docker/Dockerfile . -t lewis-client -t lewis-client:$(GIT_COMMIT_ID) -t lewis-client:$(GIT_BRANCH_NAME)
 	docker build --build-arg BIN_NAME=server.upx -f docker/Dockerfile . -t lewis-server-upx -t lewis-server-upx:$(GIT_COMMIT_ID) -t lewis-server-upx:$(GIT_BRANCH_NAME)
