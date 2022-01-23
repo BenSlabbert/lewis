@@ -27,6 +27,8 @@ type Message struct {
 	Body []byte
 }
 
+// NewWriter creates a new writer instance with outPath being the destination path for the AOF
+// and idxPath being the path for the file containing the latest message id.
 func NewWriter(outPath, idxPath string) (*Writer, error) {
 	outFile, err := os.OpenFile(outPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -59,6 +61,7 @@ func (w *Writer) Close() error {
 	return w.out.Close()
 }
 
+// getLatestId gets the latest id from file
 func (w *Writer) getLatestId() uint64 {
 	idxFile, err := os.OpenFile(w.idxPath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
@@ -85,6 +88,8 @@ func (w *Writer) getLatestId() uint64 {
 	return 0
 }
 
+// writeLatestId writes the latestId to file.
+// Note: not thread safe
 func (w *Writer) writeLatestId(id uint64) error {
 	if err := os.Truncate(w.idxPath, 0); err != nil {
 		return err
@@ -134,6 +139,7 @@ func (w *Writer) SyncWrite(bytes []byte) (uint64, error) {
 	return latestId, err
 }
 
+// ReadMessage reads a single message with the given id
 func (w *Writer) ReadMessage(id uint64) ([]byte, error) {
 	seekPoint, ok := w.msgIndex[id]
 	if !ok {
