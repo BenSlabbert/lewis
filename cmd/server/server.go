@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -22,8 +23,8 @@ type Server struct {
 	writer *writer.Writer
 }
 
-func newServer(ctx context.Context) *Server {
-	newWriter, err := writer.NewWriter("/home/ben/Goland/lewis/out.bin", "/home/ben/Goland/lewis/id.bin")
+func newServer(ctx context.Context, aofPath, idPath string) *Server {
+	newWriter, err := writer.NewWriter(aofPath, idPath)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -32,17 +33,57 @@ func newServer(ctx context.Context) *Server {
 }
 
 func (s *Server) Read(req *protocolpb.ReadRequest, stream protocolpb.LewisService_ReadServer) error {
-	read, err := s.writer.ReadFromBeginning()
+	switch t := req.GetReadType().(type) {
+	case *protocolpb.ReadRequest_FromId:
+		return status.Errorf(codes.Unimplemented, "not implemented")
+	case *protocolpb.ReadRequest_Beginning:
+		return s.readFromBeginning(stream)
+	case *protocolpb.ReadRequest_Latest:
+		return s.readLatestMessages(stream)
+	default:
+		return status.Errorf(codes.InvalidArgument, "unable to handle read type %t", t)
+	}
+}
+
+func (s *Server) readLatestMessages(stream protocolpb.LewisService_ReadServer) error {
+	u := uuid.New()
+	messages := s.writer.SubscribeToLatestMessages(u)
+	defer s.writer.UnSubscribeToLatestMessages(u)
+
+	for {
+		select {
+		case <-stream.Context().Done():
+			log.Println("client closing")
+			return nil
+		case message := <-messages:
+			err := stream.Send(&protocolpb.ReadResponse{
+				Id:    message.Id,
+				Value: message.Body,
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (s *Server) readFromBeginning(stream protocolpb.LewisService_ReadServer) error {
+	msgChan, err := s.writer.ReadFromBeginning()
 	if err != nil {
 		return err
 	}
 
-	x := <-read
+	for message := range msgChan {
+		err = stream.Send(&protocolpb.ReadResponse{
+			Id:    message.Id,
+			Value: message.Body,
+		})
+		if err != nil {
+			return err
+		}
+	}
 
-	return stream.Send(&protocolpb.ReadResponse{
-		Id:    x.Id,
-		Value: x.Body,
-	})
+	return nil
 }
 
 func (s *Server) Write(ctx context.Context, req *protocolpb.WriteRequest) (*protocolpb.WriteResponse, error) {
@@ -83,7 +124,12 @@ func (s *Server) authorize(ctx context.Context) error {
 		return status.Error(codes.InvalidArgument, "unable to get credentials from metadata")
 	}
 
-	token, ok := md["token"]
+	_, ok = md[protocolpb.MD_uname.String()]
+	if !ok {
+		return status.Error(codes.Unauthenticated, "no name provided")
+	}
+
+	token, ok := md[protocolpb.MD_token.String()]
 	if !ok {
 		return status.Error(codes.Unauthenticated, "no token provided")
 	}

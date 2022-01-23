@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"google.golang.org/grpc"
+	"io/ioutil"
 	protocolpb "lewis/gen/pb/protocol"
+	"lewis/pkg/util"
 	"log"
 	"net"
 	"os"
@@ -14,15 +17,22 @@ import (
 	"time"
 )
 
+// GitCommit is set during compilation
 var GitCommit string
 
+var aofPath string
+var idPath string
+
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Printf("Running server build commit: %s", GitCommit)
+
+	parseFlags()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s := newServer(ctx)
+	s := newServer(ctx, aofPath, idPath)
 	go s.Init()
 
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(s.UnaryInterceptor), grpc.StreamInterceptor(s.StreamInterceptor))
@@ -57,4 +67,28 @@ func main() {
 
 	<-time.After(100 * time.Millisecond)
 	log.Println("clean shutdown")
+}
+
+func parseFlags() {
+	aofPathPtr := flag.String("aof", "", "path to append only file")
+	idPathPtr := flag.String("id", "", "path to id file")
+	flag.Parse()
+
+	if *aofPathPtr == "" {
+		path, err := ioutil.TempFile("", "append_only_file")
+		if err != nil {
+			log.Fatalln(err)
+		}
+		util.CloseQuietly(path)
+		aofPath = path.Name()
+	}
+
+	if *idPathPtr == "" {
+		path, err := ioutil.TempFile("", "id_file")
+		if err != nil {
+			log.Fatalln(err)
+		}
+		util.CloseQuietly(path)
+		idPath = path.Name()
+	}
 }

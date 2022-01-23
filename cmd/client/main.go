@@ -12,9 +12,11 @@ import (
 	"log"
 )
 
+// GitCommit is set during compilation
 var GitCommit string
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Printf("Running server build commit: %s", GitCommit)
 
 	var opts []grpc.DialOption
@@ -37,9 +39,53 @@ func main() {
 
 	log.Println(login)
 
-	pairs := metadata.Pairs("token", login.GetToken())
+	pairs := metadata.Pairs(protocolpb.MD_uname.String(), "client1", protocolpb.MD_token.String(), login.GetToken())
 	ctx := metadata.NewOutgoingContext(context.Background(), pairs)
 
+	log.Println("read from beginning start")
+	readFromBeginning(ctx, client)
+	log.Println("read from beginning end")
+
+	log.Println("read latest start")
+	readLatest(ctx, client)
+	log.Println("read latest end")
+}
+
+func readLatest(ctx context.Context, client protocolpb.LewisServiceClient) {
+	go func() {
+		for i := 0; i < 10; i++ {
+			_, _ = client.Write(ctx, &protocolpb.WriteRequest{
+				Value: []byte(fmt.Sprintf("hello world-%d", i)),
+			})
+		}
+	}()
+
+	stream, err := client.Read(ctx, &protocolpb.ReadRequest{
+		ReadType: &protocolpb.ReadRequest_Latest{},
+	})
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	for i := 0; i < 10; i++ {
+		recv, err := stream.Recv()
+
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		id := recv.GetId()
+		value := recv.GetValue()
+		log.Printf("id: %d message: %s", id, string(value))
+	}
+
+	err = stream.CloseSend()
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+
+func readFromBeginning(ctx context.Context, client protocolpb.LewisServiceClient) {
 	write, err := client.Write(ctx, &protocolpb.WriteRequest{
 		Value: []byte("hello world"),
 	})
@@ -48,11 +94,8 @@ func main() {
 	}
 	log.Println(write)
 
-	// read back from server
 	stream, err := client.Read(ctx, &protocolpb.ReadRequest{
-		ReadType: &protocolpb.ReadRequest_FromId{
-			FromId: 1,
-		},
+		ReadType: &protocolpb.ReadRequest_Beginning{},
 	})
 	if err != nil {
 		log.Fatalln(err)

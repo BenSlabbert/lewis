@@ -2,6 +2,7 @@ package writer
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	"io"
 	"io/ioutil"
 	"lewis/pkg/util"
@@ -17,11 +18,22 @@ type Writer struct {
 	msgIndex      map[uint64]int64
 	idxPath       string
 	outPath       string
-	out           *os.File
-	outMtx        sync.Mutex
+
+	out    *os.File
+	outMtx sync.Mutex
+
+	newMessageChan chan *Message
+
+	subscriptions    map[uuid.UUID]chan *Message
+	subscriptionsMtx sync.Mutex
 }
 
 type Message struct {
+	Id   uint64
+	Body []byte
+}
+
+type ReadFromBeginningMessage struct {
 	Err  error
 	Id   uint64
 	Body []byte
@@ -41,16 +53,21 @@ func NewWriter(outPath, idxPath string) (*Writer, error) {
 	}
 
 	w := &Writer{
-		currentOffset: currentOffset.Size(),
-		msgIndex:      make(map[uint64]int64),
-		idxPath:       idxPath,
-		outPath:       outPath,
-		out:           outFile,
-		outMtx:        sync.Mutex{},
+		currentOffset:    currentOffset.Size(),
+		msgIndex:         make(map[uint64]int64),
+		idxPath:          idxPath,
+		outPath:          outPath,
+		out:              outFile,
+		outMtx:           sync.Mutex{},
+		newMessageChan:   make(chan *Message, 1),
+		subscriptions:    make(map[uuid.UUID]chan *Message),
+		subscriptionsMtx: sync.Mutex{},
 	}
 
 	id := w.getLatestId()
 	log.Printf("last id was %d", id)
+
+	go w.writeToSubscribers()
 
 	return w, nil
 }
@@ -136,7 +153,48 @@ func (w *Writer) SyncWrite(bytes []byte) (uint64, error) {
 	w.msgIndex[latestId] = w.currentOffset
 	w.currentOffset += int64(bytesWritten)
 
+	w.newMessageChan <- &Message{
+		Id:   latestId,
+		Body: bytes,
+	}
+
 	return latestId, err
+}
+
+// writeToSubscribers should be run in its own goroutine
+func (w *Writer) writeToSubscribers() {
+	for message := range w.newMessageChan {
+		w.subscriptionsMtx.Lock()
+		for _, c := range w.subscriptions {
+			newC := c
+			go func() {
+				newC <- &Message{
+					Id:   message.Id,
+					Body: message.Body,
+				}
+			}()
+		}
+		w.subscriptionsMtx.Unlock()
+	}
+}
+
+func (w *Writer) SubscribeToLatestMessages(u uuid.UUID) <-chan *Message {
+	w.subscriptionsMtx.Lock()
+	defer w.subscriptionsMtx.Unlock()
+
+	msgChan := make(chan *Message, 1)
+
+	w.subscriptions[u] = msgChan
+
+	return msgChan
+}
+
+func (w *Writer) UnSubscribeToLatestMessages(u uuid.UUID) {
+	w.subscriptionsMtx.Lock()
+	defer w.subscriptionsMtx.Unlock()
+
+	close(w.subscriptions[u])
+	delete(w.subscriptions, u)
 }
 
 // ReadMessage reads a single message with the given id
@@ -223,16 +281,18 @@ func readMessage(file *os.File) (uint64, []byte, error) {
 // in the same manner, if an error is encountered reading will stop at that point.
 //
 // Note: this method does not 'tail' the AOF
-func (w *Writer) ReadFromBeginning() (<-chan *Message, error) {
+func (w *Writer) ReadFromBeginning() (<-chan *ReadFromBeginningMessage, error) {
 	file, err := os.Open(w.outPath)
 	if err != nil {
 		return nil, err
 	}
 	// make sure we are at the beginning
-	seek, err := file.Seek(0, 0)
-	log.Println(seek, err)
+	_, err = file.Seek(0, 0)
+	if err != nil {
+		return nil, err
+	}
 
-	messageChan := make(chan *Message, 1)
+	messageChan := make(chan *ReadFromBeginningMessage, 1)
 
 	go func() {
 		defer close(messageChan)
@@ -244,11 +304,11 @@ func (w *Writer) ReadFromBeginning() (<-chan *Message, error) {
 			}
 
 			if err != nil {
-				messageChan <- &Message{Err: err}
+				messageChan <- &ReadFromBeginningMessage{Err: err}
 				return
 			}
 
-			messageChan <- &Message{
+			messageChan <- &ReadFromBeginningMessage{
 				Id:   id,
 				Body: msg,
 			}
