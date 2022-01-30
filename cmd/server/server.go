@@ -35,6 +35,12 @@ func newServer(ctx context.Context, aofPath, idPath string) *Server {
 func (s *Server) Read(req *protocolpb.ReadRequest, stream protocolpb.LewisService_ReadServer) error {
 	switch t := req.GetReadType().(type) {
 	case *protocolpb.ReadRequest_FromId:
+		// determine if this id is in the cache or not
+		// if it is in the cache serve the response from the cache and subscribe for new messages
+		// when possible sap to just serve from the new message subscription
+
+		// if not in the cache, read from file
+		// read from file until the file read has caught up to the cache, then switch
 		return status.Errorf(codes.Unimplemented, "not implemented")
 	case *protocolpb.ReadRequest_Beginning:
 		return s.readFromBeginning(stream)

@@ -7,8 +7,10 @@ import (
 	"io/ioutil"
 	"lewis/pkg/util"
 	"log"
+	"math"
 	"os"
 	"sync"
+	"time"
 )
 
 const KB = 1024
@@ -26,6 +28,8 @@ type Writer struct {
 
 	subscriptions    map[uuid.UUID]chan *Message
 	subscriptionsMtx sync.Mutex
+
+	cache *util.LinkedList
 }
 
 type Message struct {
@@ -62,12 +66,14 @@ func NewWriter(outPath, idxPath string) (*Writer, error) {
 		newMessageChan:   make(chan *Message, 1),
 		subscriptions:    make(map[uuid.UUID]chan *Message),
 		subscriptionsMtx: sync.Mutex{},
+		cache:            util.NewLinkedList(math.MaxInt),
 	}
 
 	id := w.getLatestId()
 	log.Printf("last id was %d", id)
 
 	go w.writeToSubscribers()
+	go w.trimCache()
 
 	return w, nil
 }
@@ -153,10 +159,16 @@ func (w *Writer) SyncWrite(bytes []byte) (uint64, error) {
 	w.msgIndex[latestId] = w.currentOffset
 	w.currentOffset += int64(bytesWritten)
 
-	w.newMessageChan <- &Message{
+	msg := &Message{
 		Id:   latestId,
 		Body: bytes,
 	}
+
+	w.newMessageChan <- msg
+
+	// todo do not do this
+	// the clients should use this cache we switching from the file read to the live stream read
+	w.cache.Add(msg)
 
 	return latestId, err
 }
@@ -166,6 +178,7 @@ func (w *Writer) writeToSubscribers() {
 	for message := range w.newMessageChan {
 		w.subscriptionsMtx.Lock()
 		for _, c := range w.subscriptions {
+			// there are some funny tricks here with loops and inner go funcs
 			newC := c
 			go func() {
 				newC <- &Message{
@@ -316,4 +329,16 @@ func (w *Writer) ReadFromBeginning() (<-chan *ReadFromBeginningMessage, error) {
 	}()
 
 	return messageChan, nil
+}
+
+func (w *Writer) trimCache() {
+	for {
+		select {
+		case <-time.After(5 * time.Second):
+			trimmed := w.cache.Trim()
+			if trimmed > 0 {
+				log.Printf("trimeed: %d from cache", trimmed)
+			}
+		}
+	}
 }

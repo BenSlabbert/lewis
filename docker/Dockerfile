@@ -1,3 +1,4 @@
+# try use google's distroless images
 FROM alpine:3.15
 
 ARG BIN_NAME
