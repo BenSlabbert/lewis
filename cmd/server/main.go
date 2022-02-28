@@ -53,6 +53,7 @@ func main() {
 		sig := <-signalChan
 		log.Printf("got signal %v, attempting graceful shutdown", sig)
 		cancel()
+		// give this 10 seconds to stop before a hard stop with grpcServer.Stop()
 		grpcServer.GracefulStop()
 		wg.Done()
 	}()

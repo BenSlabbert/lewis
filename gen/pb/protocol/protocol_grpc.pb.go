@@ -20,7 +20,7 @@ const _ = grpc.SupportPackageIsVersion7
 type LewisServiceClient interface {
 	Login(ctx context.Context, in *LoginRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	Write(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteResponse, error)
-	Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (LewisService_ReadClient, error)
+	Read(ctx context.Context, opts ...grpc.CallOption) (LewisService_ReadClient, error)
 }
 
 type lewisServiceClient struct {
@@ -49,28 +49,27 @@ func (c *lewisServiceClient) Write(ctx context.Context, in *WriteRequest, opts .
 	return out, nil
 }
 
-func (c *lewisServiceClient) Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (LewisService_ReadClient, error) {
+func (c *lewisServiceClient) Read(ctx context.Context, opts ...grpc.CallOption) (LewisService_ReadClient, error) {
 	stream, err := c.cc.NewStream(ctx, &LewisService_ServiceDesc.Streams[0], "/protocol_pb.LewisService/Read", opts...)
 	if err != nil {
 		return nil, err
 	}
 	x := &lewisServiceReadClient{stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
 	return x, nil
 }
 
 type LewisService_ReadClient interface {
+	Send(*ReadRequest) error
 	Recv() (*ReadResponse, error)
 	grpc.ClientStream
 }
 
 type lewisServiceReadClient struct {
 	grpc.ClientStream
+}
+
+func (x *lewisServiceReadClient) Send(m *ReadRequest) error {
+	return x.ClientStream.SendMsg(m)
 }
 
 func (x *lewisServiceReadClient) Recv() (*ReadResponse, error) {
@@ -87,7 +86,7 @@ func (x *lewisServiceReadClient) Recv() (*ReadResponse, error) {
 type LewisServiceServer interface {
 	Login(context.Context, *LoginRequest) (*LoginResponse, error)
 	Write(context.Context, *WriteRequest) (*WriteResponse, error)
-	Read(*ReadRequest, LewisService_ReadServer) error
+	Read(LewisService_ReadServer) error
 }
 
 // UnimplementedLewisServiceServer should be embedded to have forward compatible implementations.
@@ -100,7 +99,7 @@ func (UnimplementedLewisServiceServer) Login(context.Context, *LoginRequest) (*L
 func (UnimplementedLewisServiceServer) Write(context.Context, *WriteRequest) (*WriteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Write not implemented")
 }
-func (UnimplementedLewisServiceServer) Read(*ReadRequest, LewisService_ReadServer) error {
+func (UnimplementedLewisServiceServer) Read(LewisService_ReadServer) error {
 	return status.Errorf(codes.Unimplemented, "method Read not implemented")
 }
 
@@ -152,15 +151,12 @@ func _LewisService_Write_Handler(srv interface{}, ctx context.Context, dec func(
 }
 
 func _LewisService_Read_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(ReadRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(LewisServiceServer).Read(m, &lewisServiceReadServer{stream})
+	return srv.(LewisServiceServer).Read(&lewisServiceReadServer{stream})
 }
 
 type LewisService_ReadServer interface {
 	Send(*ReadResponse) error
+	Recv() (*ReadRequest, error)
 	grpc.ServerStream
 }
 
@@ -170,6 +166,14 @@ type lewisServiceReadServer struct {
 
 func (x *lewisServiceReadServer) Send(m *ReadResponse) error {
 	return x.ServerStream.SendMsg(m)
+}
+
+func (x *lewisServiceReadServer) Recv() (*ReadRequest, error) {
+	m := new(ReadRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // LewisService_ServiceDesc is the grpc.ServiceDesc for LewisService service.
@@ -193,6 +197,7 @@ var LewisService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "Read",
 			Handler:       _LewisService_Read_Handler,
 			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "pkg/protocol/protocol.proto",

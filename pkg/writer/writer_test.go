@@ -1,6 +1,7 @@
 package writer
 
 import (
+	"context"
 	"fmt"
 	"github.com/google/uuid"
 	"io/ioutil"
@@ -37,7 +38,7 @@ func TestWriter_ReadFromBeginning(t *testing.T) {
 		}
 	}
 
-	messages, err := writer.ReadFromBeginning()
+	messages, err := writer.ReadFromBeginning(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

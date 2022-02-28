@@ -1,11 +1,19 @@
-.PHONY: build fmt vet mod upx docker proto-gen clean
+.PHONY: all build quickBuild fmt vet mod upx docker proto-gen clean
 
 GIT_COMMIT_ID = $(shell git log --format="%H" -n 1)
 GIT_BRANCH_NAME = $(shell git symbolic-ref --short -q HEAD)
 
-build: mod fmt vet proto-gen test
+all: clean mod proto-gen fmt vet test build upx docker
+
+# builds a optimized binary
+build:
 	GOOS=linux ARCH=amd64 CGO_ENABLED=0 go build -tags netgo -a -v -ldflags "-s -w -X main.GitCommit=$(GIT_COMMIT_ID)" -o bin/cmd/client cmd/client/*.go
 	GOOS=linux ARCH=amd64 CGO_ENABLED=0 go build -tags netgo -a -v -ldflags "-s -w -X main.GitCommit=$(GIT_COMMIT_ID)" -o bin/cmd/server cmd/server/*.go
+
+# use for development
+quickBuild:
+	go build -o bin/cmd/client cmd/client/*.go
+	go build -o bin/cmd/server cmd/server/*.go
 
 # https://upx.github.io/
 upx:

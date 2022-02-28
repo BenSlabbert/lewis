@@ -10,10 +10,13 @@ import (
 	protocolpb "lewis/gen/pb/protocol"
 	"lewis/pkg/util"
 	"log"
+	"time"
 )
 
 // GitCommit is set during compilation
 var GitCommit string
+
+var count = 0
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
@@ -54,13 +57,16 @@ func main() {
 func readLatest(ctx context.Context, client protocolpb.LewisServiceClient) {
 	go func() {
 		for i := 0; i < 10; i++ {
-			_, _ = client.Write(ctx, &protocolpb.WriteRequest{
-				Value: []byte(fmt.Sprintf("hello world-%d", i)),
-			})
+			write(ctx, client)
 		}
 	}()
 
-	stream, err := client.Read(ctx, &protocolpb.ReadRequest{
+	stream, err := client.Read(ctx)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	err = stream.Send(&protocolpb.ReadRequest{
 		ReadType: &protocolpb.ReadRequest_Latest{},
 	})
 	if err != nil {
@@ -86,20 +92,30 @@ func readLatest(ctx context.Context, client protocolpb.LewisServiceClient) {
 }
 
 func readFromBeginning(ctx context.Context, client protocolpb.LewisServiceClient) {
-	write, err := client.Write(ctx, &protocolpb.WriteRequest{
-		Value: []byte("hello world"),
-	})
+	for i := 0; i < 20; i++ {
+		write(ctx, client)
+	}
+
+	stream, err := client.Read(ctx)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	log.Println(write)
 
-	stream, err := client.Read(ctx, &protocolpb.ReadRequest{
+	err = stream.Send(&protocolpb.ReadRequest{
 		ReadType: &protocolpb.ReadRequest_Beginning{},
 	})
 	if err != nil {
 		log.Fatalln(err)
 	}
+
+	go func() {
+		for {
+			<-time.After(250 * time.Millisecond)
+			write(ctx, client)
+		}
+	}()
+
+	lastId := uint64(0)
 
 	for {
 		recv, err := stream.Recv()
@@ -112,8 +128,36 @@ func readFromBeginning(ctx context.Context, client protocolpb.LewisServiceClient
 			return
 		}
 
+		// take time to do work
+		<-time.After(50 * time.Millisecond)
+
 		id := recv.GetId()
 		value := recv.GetValue()
-		log.Printf("id: %d message: %s", id, string(value))
+		log.Printf("received id: %d message: %s", id, string(value))
+
+		if id-lastId != 1 {
+			log.Fatalf("last id received was %d current id is %d, error, ids are not in sequence", lastId, id)
+		}
+		lastId = id
+
+		err = stream.Send(&protocolpb.ReadRequest{
+			ReadType: &protocolpb.ReadRequest_AckId{
+				AckId: id,
+			},
+		})
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}
+}
+
+func write(ctx context.Context, client protocolpb.LewisServiceClient) {
+	count++
+	var err error
+	_, err = client.Write(ctx, &protocolpb.WriteRequest{
+		Value: []byte(fmt.Sprintf("hello world - %d", count)),
+	})
+	if err != nil {
+		log.Fatalln(err)
 	}
 }

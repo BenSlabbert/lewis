@@ -5,7 +5,7 @@ option go_package = "./;protocol_pb";
 service LewisService {
   rpc Login(LoginRequest) returns (LoginResponse) {}
   rpc Write(WriteRequest) returns (WriteResponse) {}
-  rpc Read(ReadRequest) returns (stream ReadResponse) {}
+  rpc Read(stream ReadRequest) returns (stream ReadResponse) {}
 }
 
 enum MD {
@@ -38,6 +38,8 @@ message ReadRequest {
     bool latest = 2;
     // from the first message
     bool beginning = 3;
+    // ack the message id
+    uint64 ack_id = 4;
   }
 }
 
