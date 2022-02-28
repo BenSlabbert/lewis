@@ -1,9 +1,9 @@
-.PHONY: all build quickBuild fmt vet mod upx docker proto-gen clean
+.PHONY: all build quickBuild fmt vet mod upx docker proto-gen clean lint
 
 GIT_COMMIT_ID = $(shell git log --format="%H" -n 1)
 GIT_BRANCH_NAME = $(shell git symbolic-ref --short -q HEAD)
 
-all: clean mod proto-gen fmt vet test build upx docker
+all: clean mod proto-gen fmt vet lint test build upx docker
 
 # builds a optimized binary
 build:
@@ -45,3 +45,7 @@ proto-gen:
 clean:
 	rm -rf bin
 	rm -rf *.bin
+
+# https://golangci-lint.run/usage/install/
+lint:
+	golangci-lint run ./...

@@ -343,7 +343,7 @@ func readMessage(file *os.File) (uint64, []byte, error) {
 	msgLengthUint64 = util.Uint64FromBytes(msgLengthBytes)
 
 	// read message body
-	msgBytes = make([]byte, msgLengthUint64, msgLengthUint64)
+	msgBytes = make([]byte, msgLengthUint64)
 	read, err = file.Read(msgBytes)
 	if read == 0 && err == io.EOF {
 		return 0, nil, io.EOF

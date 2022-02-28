@@ -329,11 +329,9 @@ func (s *Server) Write(ctx context.Context, req *protocolpb.WriteRequest) (*prot
 func (s *Server) Init() {
 	log.Println("waiting for stop server")
 
-	select {
-	case <-s.ctx.Done():
-		util.CloseQuietly(s.writer)
-		log.Println("stop server")
-	}
+	<-s.ctx.Done()
+	util.CloseQuietly(s.writer)
+	log.Println("stop server")
 }
 
 func (s *Server) Login(ctx context.Context, req *protocolpb.LoginRequest) (*protocolpb.LoginResponse, error) {
